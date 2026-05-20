@@ -116,6 +116,16 @@ function shutdown() {
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use. Is another instance running?`);
+    process.exit(1);
+  } else {
+    console.error('Server error:', err.message);
+    process.exit(1);
+  }
+});
+
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`Paper Sidebar server running on http://127.0.0.1:${PORT}`);
   const { execSync } = require('child_process');
