@@ -30,6 +30,7 @@ function askClaude(question, context = {}, timeoutMs = 60000) {
     const child = spawn('claude', ['-p', prompt], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env },
+      shell: true,
     });
 
     let stdout = '';
@@ -70,6 +71,7 @@ function askClaudeStream(question, context = {}, timeoutMs = 60000) {
   const child = spawn('claude', ['-p', prompt], {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env },
+    shell: true,
   });
 
   const timer = setTimeout(() => {
