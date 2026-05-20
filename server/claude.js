@@ -16,7 +16,7 @@ function buildPrompt(question, context = {}) {
   }
   if (context.history && context.history.length > 0) {
     parts.push(`\n对话历史：`);
-    context.history.slice(-10).forEach((msg, i) => {
+    context.history.slice(-10).forEach((msg) => {
       parts.push(`${msg.role === 'user' ? '用户' : '助手'}: ${msg.content}`);
     });
   }
@@ -37,8 +37,7 @@ function askClaude(question, context = {}, timeoutMs = 60000) {
     let stderr = '';
 
     child.stdout.on('data', (data) => {
-      const chunk = data.toString();
-      stdout += chunk;
+      stdout += data.toString();
     });
 
     child.stderr.on('data', (data) => {
