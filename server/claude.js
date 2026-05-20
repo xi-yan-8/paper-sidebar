@@ -2,7 +2,7 @@ const { EventEmitter } = require('events');
 
 const API_KEY = 'sk-e845908a5c274142a29bc958d21212ca';
 const API_URL = 'https://api.deepseek.com/v1/chat/completions';
-const MODEL = 'deepseek-chat';
+const MODEL = 'deepseek-v4-pro';
 
 const SYSTEM_PROMPT = `你是一个学术论文阅读助手。用户正在阅读一篇论文，会对论文中的术语、方法、公式提出疑问。
 请用简洁清晰的中文回答，结合用户可能正在阅读的论文领域给出解释。

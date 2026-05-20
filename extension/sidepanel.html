@@ -14,120 +14,129 @@
       display: flex;
       flex-direction: column;
       font-size: 13px;
+      overflow: hidden;
     }
     .header {
-      padding: 12px 16px;
+      padding: 10px 14px;
       background: #181825;
       border-bottom: 1px solid #313244;
-      font-weight: 600;
       display: flex;
       align-items: center;
       gap: 8px;
       flex-shrink: 0;
     }
+    .header .title { font-weight: 600; flex: 1; }
     .status { width: 8px; height: 8px; border-radius: 50%; background: #f38ba8; flex-shrink: 0; }
     .status.connected { background: #a6e3a1; }
+    .header button {
+      background: #313244; color: #cdd6f4; border: none;
+      border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 12px;
+    }
+    .header button:hover { background: #45475a; }
+
+    .history-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.4); z-index: 10; display: none;
+    }
+    .history-overlay.show { display: block; }
+    .history-panel {
+      position: fixed; top: 0; left: 0; bottom: 0; width: 300px;
+      background: #181825; z-index: 11; display: flex; flex-direction: column;
+      transform: translateX(-100%); transition: transform 0.2s ease;
+    }
+    .history-panel.show { transform: translateX(0); }
+    .history-panel-header {
+      padding: 12px 14px; border-bottom: 1px solid #313244;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .history-panel-header span { font-weight: 600; flex: 1; }
+    .history-panel-header button {
+      background: none; border: none; color: #cdd6f4; cursor: pointer; font-size: 16px;
+    }
+    .history-new-btn {
+      margin: 10px; padding: 8px; background: #89b4fa; color: #1e1e2e;
+      border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 12px;
+    }
+    .history-list { flex: 1; overflow-y: auto; padding: 0 8px; }
+    .history-item {
+      padding: 10px 12px; border-radius: 8px; cursor: pointer;
+      margin-bottom: 4px; transition: background 0.1s;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .history-item:hover { background: #313244; }
+    .history-item.active { background: #313244; border: 1px solid #45475a; }
+    .history-item .h-info { flex: 1; min-width: 0; }
+    .history-item .h-title {
+      font-size: 12px; font-weight: 500;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .history-item .h-meta {
+      font-size: 10px; color: #6c7086; margin-top: 2px;
+    }
+    .history-item .h-del {
+      visibility: hidden; color: #f38ba8; font-size: 16px;
+      line-height: 1; padding: 2px 4px; cursor: pointer; flex-shrink: 0;
+    }
+    .history-item:hover .h-del { visibility: visible; }
+
     .messages {
-      flex: 1;
-      overflow-y: auto;
-      padding: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
+      flex: 1; overflow-y: auto; padding: 12px;
+      display: flex; flex-direction: column; gap: 10px;
     }
     .message {
-      max-width: 92%;
-      padding: 10px 12px;
-      border-radius: 10px;
-      line-height: 1.6;
-      word-break: break-word;
+      max-width: 92%; padding: 10px 12px; border-radius: 10px;
+      line-height: 1.6; word-break: break-word; font-size: 12px;
     }
-    .message.user {
-      align-self: flex-end;
-      background: #313244;
-    }
-    .message.assistant {
-      align-self: flex-start;
-      background: transparent;
-      border: 1px solid #45475a;
-    }
+    .message.user { align-self: flex-end; background: #313244; }
+    .message.assistant { align-self: flex-start; background: transparent; border: 1px solid #45475a; }
     .message.assistant p { margin: 6px 0; }
     .message.assistant p:first-child { margin-top: 0; }
     .message.assistant p:last-child { margin-bottom: 0; }
-    .message.assistant code {
-      background: #313244;
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-size: 12px;
-    }
-    .message.assistant pre {
-      background: #11111b;
-      padding: 10px;
-      border-radius: 6px;
-      overflow-x: auto;
-      margin: 6px 0;
-    }
-    .message.assistant pre code {
-      background: none;
-      padding: 0;
-    }
-    .message.assistant ul, .message.assistant ol {
-      padding-left: 18px;
-      margin: 4px 0;
-    }
-    .message.assistant blockquote {
-      border-left: 3px solid #89b4fa;
-      padding-left: 10px;
-      color: #a6adc8;
-      margin: 6px 0;
-    }
+    .message.assistant code { background: #313244; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+    .message.assistant pre { background: #11111b; padding: 10px; border-radius: 6px; overflow-x: auto; margin: 6px 0; }
+    .message.assistant pre code { background: none; padding: 0; }
+    .message.assistant ul, .message.assistant ol { padding-left: 18px; margin: 4px 0; }
+    .message.assistant blockquote { border-left: 3px solid #89b4fa; padding-left: 10px; color: #a6adc8; margin: 6px 0; }
+    .message.assistant h1, .message.assistant h2, .message.assistant h3 { margin: 8px 0 4px; font-size: 14px; }
+    .message.assistant table { border-collapse: collapse; width: 100%; margin: 6px 0; font-size: 11px; }
+    .message.assistant th, .message.assistant td { border: 1px solid #45475a; padding: 4px 8px; text-align: left; }
+    .message.assistant th { background: #313244; }
     .typing { color: #a6e3a1; font-size: 11px; padding: 4px 12px; }
     .input-area {
-      padding: 10px;
-      border-top: 1px solid #313244;
-      display: flex;
-      gap: 8px;
-      flex-shrink: 0;
+      padding: 10px; border-top: 1px solid #313244;
+      display: flex; gap: 8px; flex-shrink: 0;
     }
     .input-area input {
-      flex: 1;
-      background: #313244;
-      border: none;
-      border-radius: 8px;
-      padding: 10px 12px;
-      color: #cdd6f4;
-      font-size: 13px;
-      outline: none;
+      flex: 1; background: #313244; border: none; border-radius: 8px;
+      padding: 10px 12px; color: #cdd6f4; font-size: 13px; outline: none;
     }
     .input-area input::placeholder { color: #6c7086; }
     .input-area button {
-      background: #89b4fa;
-      color: #1e1e2e;
-      border: none;
-      border-radius: 8px;
-      padding: 10px 16px;
-      font-weight: 600;
-      cursor: pointer;
-      font-size: 13px;
+      background: #89b4fa; color: #1e1e2e; border: none;
+      border-radius: 8px; padding: 10px 16px; font-weight: 600; cursor: pointer; font-size: 13px;
     }
     .input-area button:disabled { opacity: 0.5; cursor: default; }
     .info-banner {
-      margin: 12px;
-      padding: 10px 12px;
-      border-radius: 8px;
-      font-size: 11px;
-      text-align: center;
+      margin: 12px; padding: 10px 12px; border-radius: 8px; font-size: 11px; text-align: center;
     }
-    .info-banner.disconnected {
-      background: #3b1d1d;
-      color: #f38ba8;
-    }
+    .info-banner.disconnected { background: #3b1d1d; color: #f38ba8; }
   </style>
 </head>
 <body>
+  <div class="history-overlay" id="historyOverlay"></div>
+  <div class="history-panel" id="historyPanel">
+    <div class="history-panel-header">
+      <span>📋 历史对话</span>
+      <button id="closeHistoryBtn">✕</button>
+    </div>
+    <button class="history-new-btn" id="newChatBtn">＋ 新建对话</button>
+    <div class="history-list" id="historyList"></div>
+  </div>
+
   <div class="header">
     <span class="status" id="status"></span>
-    <span>Claude Paper Assistant</span>
+    <span class="title">Claude Paper Assistant</span>
+    <button id="historyBtn">📋 历史</button>
   </div>
   <div id="messages" class="messages">
     <div class="info-banner disconnected" id="banner">
