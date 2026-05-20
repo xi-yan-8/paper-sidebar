@@ -16,7 +16,7 @@ function buildPrompt(question, context = {}) {
   }
   if (context.history && context.history.length > 0) {
     parts.push(`\n对话历史：`);
-    context.history.slice(-5).forEach((msg, i) => {
+    context.history.slice(-10).forEach((msg, i) => {
       parts.push(`${msg.role === 'user' ? '用户' : '助手'}: ${msg.content}`);
     });
   }
@@ -77,6 +77,11 @@ function askClaudeStream(question, context = {}, timeoutMs = 60000) {
   }, timeoutMs);
 
   child.on('close', () => clearTimeout(timer));
+
+  child.on('error', (err) => {
+    clearTimeout(timer);
+    child._spawnError = err;
+  });
 
   return { child, timer };
 }
