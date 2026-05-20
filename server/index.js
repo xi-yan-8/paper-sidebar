@@ -8,8 +8,8 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-let activeChild = null;
-let activeChildTimer = null;
+let activeEmitter = null;
+let activeTimer = null;
 
 wss.on('connection', (ws) => {
   console.log('Sidebar connected');
@@ -27,50 +27,44 @@ wss.on('connection', (ws) => {
 
     const { question, context } = msg;
 
-    // Validate question field
     if (!question || typeof question !== 'string' || question.trim() === '') {
       ws.send(JSON.stringify({ type: 'error', message: '问题不能为空' }));
       return;
     }
 
-    // Guard against concurrent child processes
-    if (activeChild) {
-      if (activeChildTimer) {
-        clearTimeout(activeChildTimer);
-        activeChildTimer = null;
+    // Cancel previous request if still in-flight
+    if (activeEmitter) {
+      if (activeTimer) {
+        clearTimeout(activeTimer);
+        activeTimer = null;
       }
-      activeChild.removeAllListeners();
-      activeChild.kill();
-      activeChild = null;
+      activeEmitter.removeAllListeners();
+      activeEmitter = null;
     }
 
     try {
-      const { child, timer } = askClaudeStream(question, context, 60000);
-      activeChild = child;
-      activeChildTimer = timer;
+      const { emitter, timer } = askClaudeStream(question, context || {}, 120000);
+      activeEmitter = emitter;
+      activeTimer = timer;
 
-      child.stdout.on('data', (chunk) => {
-        ws.send(JSON.stringify({ type: 'chunk', content: chunk.toString() }));
+      emitter.on('data', (chunk) => {
+        ws.send(JSON.stringify({ type: 'chunk', content: chunk }));
       });
 
-      child.stderr.on('data', (chunk) => {
-        ws.send(JSON.stringify({ type: 'error', message: chunk.toString() }));
-      });
-
-      child.on('close', (code) => {
+      emitter.on('close', (code) => {
         clearTimeout(timer);
-        if (activeChild === child) {
-          activeChild = null;
-          activeChildTimer = null;
+        if (activeEmitter === emitter) {
+          activeEmitter = null;
+          activeTimer = null;
         }
         ws.send(JSON.stringify({ type: 'done', exitCode: code }));
       });
 
-      child.on('error', (err) => {
+      emitter.on('error', (err) => {
         clearTimeout(timer);
-        if (activeChild === child) {
-          activeChild = null;
-          activeChildTimer = null;
+        if (activeEmitter === emitter) {
+          activeEmitter = null;
+          activeTimer = null;
         }
         ws.send(JSON.stringify({ type: 'error', message: err.message }));
       });
@@ -90,25 +84,22 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Graceful shutdown handlers
 function shutdown() {
-  console.log('\nShutting down gracefully...');
-  if (activeChild) {
-    if (activeChildTimer) {
-      clearTimeout(activeChildTimer);
-      activeChildTimer = null;
+  console.log('\nShutting down...');
+  if (activeEmitter) {
+    if (activeTimer) {
+      clearTimeout(activeTimer);
+      activeTimer = null;
     }
-    activeChild.removeAllListeners();
-    activeChild.kill();
-    activeChild = null;
+    activeEmitter.removeAllListeners();
+    activeEmitter = null;
   }
   server.close(() => {
     console.log('Server closed');
     process.exit(0);
   });
-  // Force exit after 5 seconds if server doesn't close
   setTimeout(() => {
-    console.warn('Forced shutdown after timeout');
+    console.warn('Forced shutdown');
     process.exit(1);
   }, 5000);
 }
@@ -118,22 +109,14 @@ process.on('SIGTERM', shutdown);
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`Port ${PORT} is already in use. Is another instance running?`);
-    process.exit(1);
-  } else {
-    console.error('Server error:', err.message);
+    console.error(`Port ${PORT} is already in use.`);
     process.exit(1);
   }
+  console.error('Server error:', err.message);
+  process.exit(1);
 });
 
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`Paper Sidebar server running on http://127.0.0.1:${PORT}`);
-  const { execSync } = require('child_process');
-  const isWindows = process.platform === 'win32';
-  try {
-    execSync(`${isWindows ? 'where' : 'which'} claude`, { stdio: 'ignore' });
-    console.log('Claude CLI detected');
-  } catch {
-    console.warn('WARNING: claude CLI not found in PATH');
-  }
+  console.log('Using DeepSeek API (deepseek-chat)');
 });
