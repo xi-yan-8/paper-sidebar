@@ -255,24 +255,81 @@ function appendError(errMsg) {
   scrollToBottom();
 }
 
+function renderMath(text) {
+  // Render LaTeX math with KaTeX
+  // $$...$$ for display math, $...$ for inline math
+  const placeholders = [];
+
+  // Protect code blocks first
+  let html = text.replace(/```[\s\S]*?```/g, (match) => {
+    const idx = placeholders.length;
+    placeholders.push(match);
+    return `<<<CODE${idx}>>>`;
+  });
+
+  // Render display math $$...$$
+  html = html.replace(/\$\$([\s\S]*?)\$\$/g, (_m, formula) => {
+    try {
+      // Unescape HTML entities that came from text escaping
+      const clean = formula.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+      return katex.renderToString(clean, { displayMode: true, throwOnError: false });
+    } catch (e) {
+      return '<code>公式错误</code>';
+    }
+  });
+
+  // Render inline math $...$
+  html = html.replace(/\$(.+?)\$/g, (_m, formula) => {
+    try {
+      const clean = formula.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+      return katex.renderToString(clean, { displayMode: false, throwOnError: false });
+    } catch (e) {
+      return '<code>公式错误</code>';
+    }
+  });
+
+  // Restore code blocks
+  html = html.replace(/<<<CODE(\d+)>>>/g, (_m, idx) => {
+    const code = placeholders[parseInt(idx)];
+    const escaped = code
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return '<pre><code>' + escaped.replace(/^```\w*\n?/, '').replace(/```$/, '') + '</code></pre>';
+  });
+
+  return html;
+}
+
 function renderMarkdown(text) {
+  // Escape HTML first
   let html = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+
+  // Render math before other markdown (so $ inside code blocks is protected)
+  html = renderMath(html);
+
+  // Markdown formatting (skip if already has HTML tags from KaTeX/code)
   html = html
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
     .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>')
     .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
     .replace(/\n\n/g, '</p><p>')
     .replace(/\n/g, '<br>');
-  return '<p>' + html + '</p>';
+
+  // Wrap in paragraph only if not starting with a block element
+  if (!html.match(/^<(h[1-3]|ul|ol|pre|blockquote|table|div|span)/)) {
+    html = '<p>' + html + '</p>';
+  }
+
+  return html;
 }
 
 function scrollToBottom() {
