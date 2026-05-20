@@ -1,0 +1,13 @@
+{
+  "name": "paper-sidebar",
+  "version": "1.0.0",
+  "description": "Edge sidebar for paper reading with Claude Code",
+  "private": true,
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "ws": "^8.18.0"
+  }
+}
