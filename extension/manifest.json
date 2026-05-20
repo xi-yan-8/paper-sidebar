@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Paper Sidebar - Claude Assistant",
+  "version": "1.0.0",
+  "description": "选中PDF论文中的文字，用Claude Code搜索解答",
+  "permissions": ["sidePanel", "contextMenus", "activeTab", "scripting"],
+  "host_permissions": ["file://*/*", "http://*/*", "https://*/*"],
+  "action": {
+    "default_title": "打开 Claude 论文助手"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["file://*/*.pdf", "http://*/*.pdf", "https://*/*.pdf", "file://*/*", "http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
