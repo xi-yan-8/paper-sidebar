@@ -15,6 +15,7 @@ const messagesEl = document.getElementById('messages');
 const inputEl = document.getElementById('input');
 const sendBtn = document.getElementById('sendBtn');
 const bannerEl = document.getElementById('banner');
+const welcomeEl = document.getElementById('welcomeScreen');
 
 // History UI elements
 const historyBtn = document.getElementById('historyBtn');
@@ -30,11 +31,24 @@ function newConversation() {
   conversationId = 'conv-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
   conversationMessages = [];
   clearMessages();
+  showWelcome();
 }
 
 function clearMessages() {
-  const children = messagesEl.querySelectorAll('.message');
-  children.forEach(c => c.remove());
+  const rows = messagesEl.querySelectorAll('.message-row');
+  rows.forEach(r => r.remove());
+  // Also remove any stray static assistant divs from old format
+  messagesEl.querySelectorAll('.message').forEach(m => m.remove());
+  // Remove old error messages
+  messagesEl.querySelectorAll('.error-msg').forEach(m => m.remove());
+}
+
+function hideWelcome() {
+  if (welcomeEl) welcomeEl.style.display = 'none';
+}
+
+function showWelcome() {
+  if (welcomeEl) welcomeEl.style.display = '';
 }
 
 function addMessage(role, content) {
@@ -63,6 +77,7 @@ async function loadConversation(id) {
     conversationId = data.id;
     conversationMessages = data.messages;
     clearMessages();
+    hideWelcome();
     data.messages.forEach(m => {
       if (m.role === 'user') appendUserBubble(m.content);
       else appendAssistantBubbleStatic(m.content);
@@ -81,7 +96,7 @@ async function refreshHistoryList() {
     const list = await r.json();
     historyList.innerHTML = '';
     if (list.length === 0) {
-      historyList.innerHTML = '<div style="padding:20px;text-align:center;color:#6c7086;font-size:12px;">暂无历史对话</div>';
+      historyList.innerHTML = '<div class="history-empty">暂无历史对话</div>';
       return;
     }
     list.forEach(item => {
@@ -92,7 +107,9 @@ async function refreshHistoryList() {
           <div class="h-title">${escapeHtml(item.title)}</div>
           <div class="h-meta">${formatDate(item.createdAt)} · ${item.msgCount} 条消息</div>
         </div>
-        <span class="h-del" data-id="${item.id}">🗑</span>
+        <span class="h-del" data-id="${item.id}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+        </span>
       `;
       div.querySelector('.h-info').addEventListener('click', () => loadConversation(item.id));
       div.querySelector('.h-del').addEventListener('click', (e) => {
@@ -102,7 +119,7 @@ async function refreshHistoryList() {
       historyList.appendChild(div);
     });
   } catch (e) {
-    historyList.innerHTML = '<div style="padding:20px;text-align:center;color:#f38ba8;font-size:12px;">加载失败</div>';
+    historyList.innerHTML = '<div class="history-empty" style="color:#f87171">加载失败</div>';
   }
 }
 
@@ -162,7 +179,6 @@ function connect() {
       setTimeout(connect, delay);
     } else {
       bannerEl.style.display = 'block';
-      bannerEl.innerHTML = '无法连接到本地服务<br><small>请确认已运行 start.bat</small>';
     }
   };
 
@@ -190,6 +206,7 @@ function sendQuestion(text) {
 
   if (!conversationId) newConversation();
 
+  hideWelcome();
   appendUserBubble(text);
   addMessage('user', text);
   inputEl.value = '';
@@ -204,73 +221,91 @@ function sendQuestion(text) {
   }));
 }
 
+// --- Message rendering ---
+
+function createMessageRow(role) {
+  const row = document.createElement('div');
+  row.className = 'message-row ' + role;
+
+  const avatar = document.createElement('div');
+  avatar.className = 'message-avatar';
+  avatar.textContent = role === 'user' ? '你' : 'AI';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'message-bubble';
+
+  row.appendChild(avatar);
+  row.appendChild(bubble);
+  messagesEl.appendChild(row);
+  return row;
+}
+
 function appendUserBubble(text) {
-  const div = document.createElement('div');
-  div.className = 'message user';
-  div.textContent = text;
-  messagesEl.appendChild(div);
+  const row = createMessageRow('user');
+  row.querySelector('.message-bubble').textContent = text;
   scrollToBottom();
 }
 
 function appendAssistantBubbleStatic(content) {
-  const div = document.createElement('div');
-  div.className = 'message assistant';
-  div.innerHTML = renderMarkdown(content);
-  messagesEl.appendChild(div);
+  const row = createMessageRow('assistant');
+  row.querySelector('.message-bubble').innerHTML = renderMarkdown(content);
 }
 
 function createAssistantBubble() {
-  const div = document.createElement('div');
-  div.className = 'message assistant';
-  div.innerHTML = '<span class="typing">思考中...</span>';
-  messagesEl.appendChild(div);
+  const row = createMessageRow('assistant');
+  row.querySelector('.message-bubble').innerHTML = `
+    <div class="typing-indicator">
+      <span class="typing-dot"></span>
+      <span class="typing-dot"></span>
+      <span class="typing-dot"></span>
+    </div>
+  `;
   scrollToBottom();
-  return div;
+  return row;
 }
 
 function appendChunk(chunk) {
   if (!currentAssistantBubble) return;
   currentAssistantContent += chunk;
-  currentAssistantBubble.innerHTML = renderMarkdown(currentAssistantContent);
+  currentAssistantBubble.querySelector('.message-bubble').innerHTML = renderMarkdown(currentAssistantContent);
   scrollToBottom();
 }
 
 function finalizeAssistantBubble(finalContent) {
   if (!currentAssistantBubble) return;
   if (finalContent) {
-    currentAssistantBubble.innerHTML = renderMarkdown(finalContent);
+    currentAssistantBubble.querySelector('.message-bubble').innerHTML = renderMarkdown(finalContent);
   } else if (!currentAssistantContent) {
-    currentAssistantBubble.innerHTML = '（无响应）';
+    currentAssistantBubble.querySelector('.message-bubble').innerHTML = '<span style="color:#9c9c9c">（无响应）</span>';
   }
   currentAssistantBubble = null;
   currentAssistantContent = '';
 }
 
 function appendError(errMsg) {
-  const div = document.createElement('div');
-  div.className = 'message assistant';
-  div.style.color = '#f38ba8';
-  div.textContent = '错误: ' + errMsg;
-  messagesEl.appendChild(div);
+  const row = document.createElement('div');
+  row.className = 'message-row assistant error';
+  row.innerHTML = `
+    <div class="message-avatar" style="background:linear-gradient(135deg,#f87171,#fb923c);color:#fff">!</div>
+    <div class="message-bubble">${escapeHtml(errMsg)}</div>
+  `;
+  messagesEl.appendChild(row);
   scrollToBottom();
 }
 
+// --- Markdown & Math rendering ---
+
 function renderMath(text) {
-  // Render LaTeX math with KaTeX
-  // $$...$$ for display math, $...$ for inline math
   const placeholders = [];
 
-  // Protect code blocks first
   let html = text.replace(/```[\s\S]*?```/g, (match) => {
     const idx = placeholders.length;
     placeholders.push(match);
     return `<<<CODE${idx}>>>`;
   });
 
-  // Render display math $$...$$
   html = html.replace(/\$\$([\s\S]*?)\$\$/g, (_m, formula) => {
     try {
-      // Unescape HTML entities that came from text escaping
       const clean = formula.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
       return katex.renderToString(clean, { displayMode: true, throwOnError: false });
     } catch (e) {
@@ -278,7 +313,6 @@ function renderMath(text) {
     }
   });
 
-  // Render inline math $...$
   html = html.replace(/\$(.+?)\$/g, (_m, formula) => {
     try {
       const clean = formula.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
@@ -288,7 +322,6 @@ function renderMath(text) {
     }
   });
 
-  // Restore code blocks
   html = html.replace(/<<<CODE(\d+)>>>/g, (_m, idx) => {
     const code = placeholders[parseInt(idx)];
     const escaped = code
@@ -300,16 +333,13 @@ function renderMath(text) {
 }
 
 function renderMarkdown(text) {
-  // Escape HTML first
   let html = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
-  // Render math before other markdown (so $ inside code blocks is protected)
   html = renderMath(html);
 
-  // Markdown formatting (skip if already has HTML tags from KaTeX/code)
   html = html
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
@@ -324,7 +354,6 @@ function renderMarkdown(text) {
     .replace(/\n\n/g, '</p><p>')
     .replace(/\n/g, '<br>');
 
-  // Wrap in paragraph only if not starting with a block element
   if (!html.match(/^<(h[1-3]|ul|ol|pre|blockquote|table|div|span)/)) {
     html = '<p>' + html + '</p>';
   }
@@ -342,6 +371,17 @@ sendBtn.addEventListener('click', () => sendQuestion(inputEl.value));
 inputEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') sendQuestion(inputEl.value);
 });
+
+// Suggestion chips
+if (welcomeEl) {
+  welcomeEl.addEventListener('click', (e) => {
+    const chip = e.target.closest('.suggestion-chip');
+    if (chip) {
+      const query = chip.dataset.query;
+      if (query) sendQuestion(query);
+    }
+  });
+}
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === 'ask-from-context' && msg.question) {
