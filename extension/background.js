@@ -6,23 +6,25 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === 'ask-claude' && info.selectionText) {
-    chrome.sidePanel.open({ tabId: tab.id }).then(() => {
-      setTimeout(() => {
-        chrome.runtime.sendMessage({
-          type: 'ask-from-context',
-          question: info.selectionText,
-          context: {
-            pageTitle: tab.title || '',
-            selectedText: info.selectionText,
-          },
-        });
-      }, 300);
-    });
+// Send a message to the active tab's content script
+async function sendToActiveTab(msg) {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab && tab.id) {
+    return chrome.tabs.sendMessage(tab.id, msg).catch(() => {});
   }
+}
+
+// Toolbar icon click → toggle sidebar
+chrome.action.onClicked.addListener(() => {
+  sendToActiveTab({ type: 'toggle-sidebar' });
 });
 
-chrome.action.onClicked.addListener((tab) => {
-  chrome.sidePanel.open({ tabId: tab.id });
+// Context menu → open sidebar with selected text
+chrome.contextMenus.onClicked.addListener((info) => {
+  if (info.menuItemId === 'ask-claude' && info.selectionText) {
+    sendToActiveTab({
+      type: 'open-sidebar',
+      question: info.selectionText,
+    });
+  }
 });

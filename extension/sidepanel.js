@@ -5,6 +5,7 @@ let retries = 0;
 const MAX_RETRIES = 5;
 let currentAssistantBubble = null;
 let currentAssistantContent = '';
+let pendingQuestion = null; // queued when WebSocket not yet connected
 
 // Conversation tracking
 let conversationId = null;
@@ -168,6 +169,12 @@ function connect() {
     statusEl.classList.add('connected');
     sendBtn.disabled = false;
     bannerEl.style.display = 'none';
+    // Flush any question that arrived before WebSocket was ready
+    if (pendingQuestion) {
+      const q = pendingQuestion;
+      pendingQuestion = null;
+      sendQuestion(q);
+    }
   };
 
   ws.onclose = () => {
@@ -201,8 +208,12 @@ function connect() {
 }
 
 function sendQuestion(text) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
   if (!text.trim()) return;
+  // If WebSocket not ready, queue and wait for connection
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    pendingQuestion = text;
+    return;
+  }
 
   if (!conversationId) newConversation();
 
@@ -294,71 +305,102 @@ function appendError(errMsg) {
 }
 
 // --- Markdown & Math rendering ---
-
-function renderMath(text) {
-  const placeholders = [];
-
-  let html = text.replace(/```[\s\S]*?```/g, (match) => {
-    const idx = placeholders.length;
-    placeholders.push(match);
-    return `<<<CODE${idx}>>>`;
-  });
-
-  html = html.replace(/\$\$([\s\S]*?)\$\$/g, (_m, formula) => {
-    try {
-      const clean = formula.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-      return katex.renderToString(clean, { displayMode: true, throwOnError: false });
-    } catch (e) {
-      return '<code>公式错误</code>';
-    }
-  });
-
-  html = html.replace(/\$(.+?)\$/g, (_m, formula) => {
-    try {
-      const clean = formula.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-      return katex.renderToString(clean, { displayMode: false, throwOnError: false });
-    } catch (e) {
-      return '<code>公式错误</code>';
-    }
-  });
-
-  html = html.replace(/<<<CODE(\d+)>>>/g, (_m, idx) => {
-    const code = placeholders[parseInt(idx)];
-    const escaped = code
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    return '<pre><code>' + escaped.replace(/^```\w*\n?/, '').replace(/```$/, '') + '</code></pre>';
-  });
-
-  return html;
-}
+// Pipeline: HTML-escape → protect special content → format markdown → restore special content
+// This prevents markdown regexes from corrupting KaTeX HTML or code content.
 
 function renderMarkdown(text) {
+  // Step 1: HTML escape
   let html = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
-  html = renderMath(html);
+  const ph = []; // placeholder store: { type, content }
 
+  // Step 2: Protect code blocks (```...```) — before math so $ inside code is safe
+  html = html.replace(/```[\s\S]*?```/g, (match) => {
+    ph.push({ type: 'code', content: match });
+    return '￿C' + (ph.length - 1) + '￿';
+  });
+
+  // Step 3: Protect inline code (`...`) — before math so $ inside backticks is safe
+  html = html.replace(/`([^`]+)`/g, (_m, code) => {
+    ph.push({ type: 'icode', content: code });
+    return '￿I' + (ph.length - 1) + '￿';
+  });
+
+  // Step 4: Protect display math $$...$$
+  html = html.replace(/\$\$([\s\S]*?)\$\$/g, (_m, formula) => {
+    ph.push({ type: 'dmath', content: formula });
+    return '￿D' + (ph.length - 1) + '￿';
+  });
+
+  // Step 5: Protect inline math $...$
+  html = html.replace(/\$(.+?)\$/g, (_m, formula) => {
+    ph.push({ type: 'imath', content: formula });
+    return '￿M' + (ph.length - 1) + '￿';
+  });
+
+  // Step 6: Apply markdown formatting (now safe — only plain text + placeholders)
   html = html
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
-    .replace(/^- (.+)$/gm, '<li>$1</li>')
     .replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>')
-    .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
     .replace(/\n\n/g, '</p><p>')
     .replace(/\n/g, '<br>');
 
+  // Step 7: Wrap adjacent <li> items in <ul> or <ol>
+  html = html.replace(/((?:<li>.*?(?:<br>)?<\/li>)+)/g, '<ul>$1</ul>');
+  html = html.replace(/<ul><\/ul>/g, '');
+  html = html.replace(/<br><\/ul>/g, '</ul>');
+
+  // Step 8: Wrap in paragraph if no block tag at start
   if (!html.match(/^<(h[1-3]|ul|ol|pre|blockquote|table|div|span)/)) {
     html = '<p>' + html + '</p>';
   }
 
+  // Step 9: Restore math placeholders → KaTeX HTML
+  html = html.replace(/￿D(\d+)￿/g, (_m, idx) => {
+    const item = ph[parseInt(idx)];
+    const clean = unescapeFormula(item.content);
+    try {
+      return katex.renderToString(clean, { displayMode: true, throwOnError: false });
+    } catch (e) { return '<code>公式错误</code>'; }
+  });
+  html = html.replace(/￿M(\d+)￿/g, (_m, idx) => {
+    const item = ph[parseInt(idx)];
+    const clean = unescapeFormula(item.content);
+    try {
+      return katex.renderToString(clean, { displayMode: false, throwOnError: false });
+    } catch (e) { return '<code>公式错误</code>'; }
+  });
+
+  // Step 10: Restore inline code
+  html = html.replace(/￿I(\d+)￿/g, (_m, idx) => {
+    return '<code>' + ph[parseInt(idx)].content + '</code>';
+  });
+
+  // Step 11: Restore code blocks (content was already HTML-escaped in step 1)
+  html = html.replace(/￿C(\d+)￿/g, (_m, idx) => {
+    const code = ph[parseInt(idx)].content;
+    const inner = code.replace(/^```\w*\n?/, '').replace(/\n?```$/, '');
+    return '<pre><code>' + inner + '</code></pre>';
+  });
+
   return html;
+}
+
+function unescapeFormula(f) {
+  return f.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+}
+
+function renderMath(text) {
+  return renderMarkdown(text);
 }
 
 function scrollToBottom() {
@@ -386,6 +428,13 @@ if (welcomeEl) {
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === 'ask-from-context' && msg.question) {
     sendQuestion(msg.question);
+  }
+});
+
+// Listen for messages from parent page (content script forwards questions via postMessage)
+window.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'ask-from-parent' && event.data.question) {
+    sendQuestion(event.data.question);
   }
 });
 
