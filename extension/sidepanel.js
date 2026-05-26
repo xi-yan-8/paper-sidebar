@@ -260,6 +260,7 @@ function appendUserBubble(text) {
 function appendAssistantBubbleStatic(content) {
   const row = createMessageRow('assistant');
   row.querySelector('.message-bubble').innerHTML = renderMarkdown(content);
+  setTimeout(() => renderMermaidDiagrams(row), 50);
 }
 
 function createAssistantBubble() {
@@ -289,6 +290,8 @@ function finalizeAssistantBubble(finalContent) {
   } else if (!currentAssistantContent) {
     currentAssistantBubble.querySelector('.message-bubble').innerHTML = '<span style="color:#9c9c9c">（无响应）</span>';
   }
+  // Render mermaid diagrams (deferred, after content is set)
+  setTimeout(() => renderMermaidDiagrams(currentAssistantBubble), 50);
   currentAssistantBubble = null;
   currentAssistantContent = '';
 }
@@ -304,9 +307,11 @@ function appendError(errMsg) {
   scrollToBottom();
 }
 
-// --- Markdown & Math rendering ---
-// Pipeline: HTML-escape → protect special content → format markdown → restore special content
-// This prevents markdown regexes from corrupting KaTeX HTML or code content.
+// --- Markdown & Math & Diagram rendering ---
+// Pipeline: HTML-escape → protect (code/math) → markdown → restore (math→KaTeX, mermaid→diagrams)
+// Uses HTML comment placeholders (safe through innerHTML, unlike Unicode non-characters)
+
+const PH = '​'; // zero-width space as placeholder delimiter (safe in HTML)
 
 function renderMarkdown(text) {
   // Step 1: HTML escape
@@ -315,33 +320,33 @@ function renderMarkdown(text) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
-  const ph = []; // placeholder store: { type, content }
+  const ph = [];
 
-  // Step 2: Protect code blocks (```...```) — before math so $ inside code is safe
-  html = html.replace(/```[\s\S]*?```/g, (match) => {
-    ph.push({ type: 'code', content: match });
-    return '￿C' + (ph.length - 1) + '￿';
+  // Step 2: Protect fenced blocks (```lang ... ```) — code + mermaid diagrams
+  html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_m, lang, content) => {
+    ph.push({ type: lang === 'mermaid' ? 'mermaid' : 'code', lang, content });
+    return PH + 'F' + (ph.length - 1) + PH;
   });
 
-  // Step 3: Protect inline code (`...`) — before math so $ inside backticks is safe
+  // Step 3: Protect inline code (`...`)
   html = html.replace(/`([^`]+)`/g, (_m, code) => {
     ph.push({ type: 'icode', content: code });
-    return '￿I' + (ph.length - 1) + '￿';
+    return PH + 'I' + (ph.length - 1) + PH;
   });
 
   // Step 4: Protect display math $$...$$
   html = html.replace(/\$\$([\s\S]*?)\$\$/g, (_m, formula) => {
     ph.push({ type: 'dmath', content: formula });
-    return '￿D' + (ph.length - 1) + '￿';
+    return PH + 'D' + (ph.length - 1) + PH;
   });
 
-  // Step 5: Protect inline math $...$
-  html = html.replace(/\$(.+?)\$/g, (_m, formula) => {
+  // Step 5: Protect inline math $...$ (skip if $ is preceded/followed by digit or space-digit pattern)
+  html = html.replace(/(^|[^\$])\$([^\s\$](?:[^\$]*?[^\s\$])?)\$/g, (_m, before, formula) => {
     ph.push({ type: 'imath', content: formula });
-    return '￿M' + (ph.length - 1) + '￿';
+    return before + PH + 'M' + (ph.length - 1) + PH;
   });
 
-  // Step 6: Apply markdown formatting (now safe — only plain text + placeholders)
+  // Step 6: Markdown formatting (only on plain text + placeholders)
   html = html
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
@@ -352,47 +357,59 @@ function renderMarkdown(text) {
     .replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>')
     .replace(/^- (.+)$/gm, '<li>$1</li>')
     .replace(/\n\n/g, '</p><p>')
-    .replace(/\n/g, '<br>');
+    .replace(/\n/g, '<br>')
+    // Images: ![alt](url)
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2" style="max-width:100%;border-radius:8px;margin:8px 0;" loading="lazy" onerror="this.style.display=\'none\'">');
 
-  // Step 7: Wrap adjacent <li> items in <ul> or <ol>
+  // Step 7: Wrap <li> sequences in <ul>
   html = html.replace(/((?:<li>.*?(?:<br>)?<\/li>)+)/g, '<ul>$1</ul>');
   html = html.replace(/<ul><\/ul>/g, '');
   html = html.replace(/<br><\/ul>/g, '</ul>');
 
-  // Step 8: Wrap in paragraph if no block tag at start
+  // Step 8: Paragraph wrap
   if (!html.match(/^<(h[1-3]|ul|ol|pre|blockquote|table|div|span)/)) {
     html = '<p>' + html + '</p>';
   }
 
-  // Step 9: Restore math placeholders → KaTeX HTML
-  html = html.replace(/￿D(\d+)￿/g, (_m, idx) => {
-    const item = ph[parseInt(idx)];
+  // Step 9: Restore display math → KaTeX
+  html = replacePH(html, 'D', ph, (item) => {
     const clean = unescapeFormula(item.content);
     try {
       return katex.renderToString(clean, { displayMode: true, throwOnError: false });
-    } catch (e) { return '<code>公式错误</code>'; }
+    } catch (e) {
+      return '<code class="katex-error">公式错误: ' + escapeHtml(e.message) + '</code>';
+    }
   });
-  html = html.replace(/￿M(\d+)￿/g, (_m, idx) => {
-    const item = ph[parseInt(idx)];
+
+  // Step 10: Restore inline math → KaTeX
+  html = replacePH(html, 'M', ph, (item) => {
     const clean = unescapeFormula(item.content);
     try {
       return katex.renderToString(clean, { displayMode: false, throwOnError: false });
-    } catch (e) { return '<code>公式错误</code>'; }
+    } catch (e) {
+      return '<code class="katex-error">' + escapeHtml(clean).substring(0, 60) + '</code>';
+    }
   });
 
-  // Step 10: Restore inline code
-  html = html.replace(/￿I(\d+)￿/g, (_m, idx) => {
-    return '<code>' + ph[parseInt(idx)].content + '</code>';
-  });
+  // Step 11: Restore inline code
+  html = replacePH(html, 'I', ph, (item) => '<code>' + item.content + '</code>');
 
-  // Step 11: Restore code blocks (content was already HTML-escaped in step 1)
-  html = html.replace(/￿C(\d+)￿/g, (_m, idx) => {
-    const code = ph[parseInt(idx)].content;
-    const inner = code.replace(/^```\w*\n?/, '').replace(/\n?```$/, '');
-    return '<pre><code>' + inner + '</code></pre>';
+  // Step 12: Restore mermaid diagrams & code blocks
+  html = replacePH(html, 'F', ph, (item) => {
+    if (item.type === 'mermaid') {
+      return '<div class="mermaid-container"><pre class="mermaid">' + item.content + '</pre></div>';
+    }
+    const inner = item.content.replace(/^\n?/, '').replace(/\n?$/, '');
+    const langTag = item.lang ? '<span class="code-lang">' + escapeHtml(item.lang) + '</span>' : '';
+    return '<pre>' + langTag + '<code>' + inner + '</code></pre>';
   });
 
   return html;
+}
+
+function replacePH(html, type, ph, fn) {
+  const re = new RegExp(PH.replace(/​/g, '\\u200b') + type + '(\\d+)' + PH.replace(/​/g, '\\u200b'), 'g');
+  return html.replace(re, (_m, idx) => fn(ph[parseInt(idx)]));
 }
 
 function unescapeFormula(f) {
@@ -401,6 +418,19 @@ function unescapeFormula(f) {
 
 function renderMath(text) {
   return renderMarkdown(text);
+}
+
+function renderMermaidDiagrams(container) {
+  if (typeof mermaid === 'undefined') return;
+  const els = container.querySelectorAll ? container.querySelectorAll('.mermaid') : document.querySelectorAll('.mermaid');
+  els.forEach(el => {
+    if (el.dataset.rendered) return;
+    el.dataset.rendered = '1';
+    const code = el.textContent;
+    mermaid.render('mermaid-' + Math.random().toString(36).slice(2), code)
+      .then(({ svg }) => { el.innerHTML = svg; })
+      .catch(() => { el.innerHTML = '<span class="mermaid-error">图表渲染失败</span>'; });
+  });
 }
 
 function scrollToBottom() {

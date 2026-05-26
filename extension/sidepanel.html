@@ -365,6 +365,19 @@
     .history-item:hover .h-del { visibility:visible; }
     .history-empty { padding:32px 16px; text-align:center; color:var(--text-tertiary); font-size:12px; }
 
+    /* ── Mermaid diagrams ── */
+    .mermaid-container {
+      margin:10px 0; padding:16px;
+      background:#0b0b0f; border:1px solid var(--border-subtle);
+      border-radius:var(--radius-md);
+      overflow-x:auto; text-align:center;
+    }
+    .mermaid-container svg { max-width:100%; }
+    .mermaid-error { color:var(--error); font-size:12px; padding:8px; }
+
+    /* ── Images ── */
+    .msg-content img { max-width:100%; border-radius:8px; margin:8px 0; display:block; }
+
     /* ── KaTeX ── */
     .katex { color:var(--text-primary); }
     .katex-display { margin:10px 0; overflow-x:auto; }
@@ -432,6 +445,7 @@
   </footer>
 
   <script src="lib/katex/katex.min.js"></script>
+  <script src="lib/mermaid.min.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>

@@ -20,7 +20,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["sidepanel.html", "sidepanel.js", "lib/katex/katex.min.js", "lib/katex/katex.min.css", "lib/katex/fonts/*"],
+      "resources": ["sidepanel.html", "sidepanel.js", "lib/katex/katex.min.js", "lib/katex/katex.min.css", "lib/katex/fonts/*", "lib/mermaid.min.js"],
       "matches": ["<all_urls>"]
     }
   ],
